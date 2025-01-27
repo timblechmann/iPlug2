@@ -27,141 +27,16 @@ elseif (CMAKE_SYSTEM_NAME MATCHES "Linux")
   set(vst3_target_arch "${CMAKE_SYSTEM_PROCESSOR}-linux")
 endif()
 
-iplug_find_path(VST3_INSTALL_PATH REQUIRED DIR DEFAULT_IDX 0 
+
+iplug_find_path(VST3_INSTALL_PATH REQUIRED DIR DEFAULT_IDX 0
   DOC "Path to install VST3 plugins"
   PATHS ${_paths})
-
-##########################
-# VST3 Interface Library #
-##########################
-
-add_library(iPlug2_VST3 INTERFACE)
-set(sdk ${IPLUG2_DIR}/IPlug/VST3)
-set(_src
-  "${sdk}/IPlugVST3.h"
-  "${sdk}/IPlugVST3.cpp"
-  "${sdk}/IPlugVST3_Common.h"
-  "${sdk}/IPlugVST3_Controller.h"
-  "${sdk}/IPlugVST3_Controller.cpp"
-  "${sdk}/IPlugVST3_ControllerBase.h"
-  "${sdk}/IPlugVST3_Defs.h"
-  "${sdk}/IPlugVST3_Parameter.h"
-  "${sdk}/IPlugVST3_Processor.h"
-  "${sdk}/IPlugVST3_ProcessorBase.h"
-  "${sdk}/IPlugVST3_ProcessorBase.cpp"
-  "${sdk}/IPlugVST3_View.h"
-  )
-
-list(APPEND _inc ${sdk})
-iplug_target_add(iPlug2_VST3 INTERFACE
-  SOURCE ${_src}
-  INCLUDE "${sdk}"
-  DEFINE "VST3_API" "IPLUG_DSP=1"
-  LINK iPlug2_Core
-)
-
-if (CMAKE_SYSTEM_NAME MATCHES "Linux")
-  target_sources(iPlug2_VST3 INTERFACE "${sdk}/IPlugVST3_RunLoop.cpp")
-endif()
-
-source_group(TREE ${IPLUG2_DIR} PREFIX IPlug/VST3 FILES ${_src})
-
-############
-# VST3 SDK #
-############
-
-set(_src "")
-set(_def "")
-set(_inf "")
-
-set(sdk "${VST3_SDK}/base/source")
-list(APPEND _src
-  "${sdk}/baseiids.cpp"
-  "${sdk}/classfactoryhelpers.h"
-  "${sdk}/fbuffer.cpp"
-  "${sdk}/fbuffer.h"
-  "${sdk}/fcleanup.h"
-  "${sdk}/fcommandline.h"
-  "${sdk}/fdebug.cpp"
-  "${sdk}/fdebug.h"
-  "${sdk}/fdynlib.cpp"
-  "${sdk}/fdynlib.h"
-  "${sdk}/fobject.cpp"
-  "${sdk}/fobject.h"
-  "${sdk}/fstdmethods.h"
-  "${sdk}/fstreamer.cpp"
-  "${sdk}/fstreamer.h"
-  "${sdk}/fstring.cpp"
-  "${sdk}/fstring.h"
-  "${sdk}/hexbinary.h"
-  
-  "${sdk}/updatehandler.cpp"
-  "${sdk}/updatehandler.h"
-)
-# Timer isn't implemented on Linux
-if (NOT (CMAKE_SYSTEM_NAME MATCHES "Linux"))
-  list(APPEND _src
-    "${sdk}/timer.cpp"
-    "${sdk}/timer.h"
-  )
-  
-else()
-  list(APPEND _def "SMTG_OS_LINUX")
-endif()
-
-set(sdk "${VST3_SDK}/base/thread")
-list(APPEND _src
-  "${sdk}/include/fcondition.h"
-  "${sdk}/include/flock.h"
-  "${sdk}/source/fcondition.cpp"
-  "${sdk}/source/flock.cpp"
-)
-set(sdk "${VST3_SDK}/pluginterfaces/base")
-list(APPEND _src
-  "${sdk}/conststringtable.cpp"
-  "${sdk}/coreiids.cpp"
-  "${sdk}/funknown.cpp"
-  "${sdk}/ustring.cpp"
-)
-# In the public.sdk dir we only add specific sources.
-set(sdk ${VST3_SDK}/public.sdk/source)
-list(APPEND _src
-  "${sdk}/common/commoniids.cpp"
-  "${sdk}/common/memorystream.cpp"
-  "${sdk}/common/pluginview.cpp" 
-  "${sdk}/vst/vstaudioeffect.cpp"
-  "${sdk}/vst/vstbus.cpp" 
-  "${sdk}/vst/vstcomponent.cpp"
-  "${sdk}/vst/vstcomponentbase.cpp" 
-  "${sdk}/vst/vstinitiids.cpp"
-  "${sdk}/vst/vstparameters.cpp"
-  "${sdk}/vst/vstsinglecomponenteffect.cpp"
-)
-
-# Platform-dependent stuff
-if (WIN32)
-  list(APPEND _src "${sdk}/main/dllmain.cpp" "${sdk}/main/pluginfactory.cpp" "${sdk}/common/threadchecker_win32.cpp")
-
-elseif (CMAKE_SYSTEM_NAME MATCHES "Darwin")
-  list(APPEND _def "SWELL_CLEANUP_ON_UNLOAD")
-  list(APPEND _src "${sdk}/main/macmain.cpp" "${sdk}/main/pluginfactory.cpp")
-  list(APPEND _inf "${sdk}/main/macexport.exp")
-
-elseif (CMAKE_SYSTEM_NAME MATCHES "Linux")
-  list(APPEND _src "${sdk}/main/linuxmain.cpp" "${sdk}/main/pluginfactory.cpp")
-
-endif()
-
-set(tgt iPlug2_VST3)
-target_sources(${tgt} INTERFACE ${_src})
-target_include_directories(${tgt} INTERFACE "${VST3_SDK}")
-target_compile_definitions(${tgt} INTERFACE "$<IF:$<CONFIG:Debug>,DEVELOPMENT,RELEASE>")
-source_group(TREE ${VST3_SDK} PREFIX "IPlug/VST3" FILES ${_src})
-iplug_target_add(${tgt} INTERFACE SOURCE ${_inf} DEFINE ${_def})
 
 
 function(iplug_configure_vst3 target)
   iplug_target_add(${target} PUBLIC LINK iPlug2_VST3)
+
+  target_link_libraries(${target} PUBLIC)
 
   if (WIN32)
     set(out_dir "${CMAKE_BINARY_DIR}/${PLUG_NAME}.vst3")

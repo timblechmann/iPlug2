@@ -8,17 +8,15 @@
 
 # This file should be included in your main CMakeLists.txt file.
 
+include_guard(DIRECTORY)
+
 if (APPLE)
   enable_language(OBJC)
   enable_language(OBJCXX)
+
+  add_compile_options(-Wno-elaborated-enum-base)    # help clangd
+  add_compile_options(-Wno-deprecated-declarations) # WAYYYY to many warnings
 endif()
-
-# Add Scripts/cmake directory to CMAKE_MODULE_PATH
-set(IPLUG2_CMAKE_DIR ${CMAKE_CURRENT_LIST_DIR}/Scripts/cmake)
-list(APPEND CMAKE_MODULE_PATH ${IPLUG2_CMAKE_DIR})
-
-# This is used in many places
-set(IPLUG2_DIR ${CMAKE_CURRENT_LIST_DIR})
 
 # Make sure MSVC uses static linking for compatibility with Skia libraries and easier distribution.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
@@ -26,17 +24,121 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 # We generate folders for targets that support it (Visual Studio, Xcode, etc.)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
-# Set common output directory when !WIN32
-if(NOT WIN32)
- set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/out)
- set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/out)
- set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/out)
-endif()
+set(CMAKE_XCODE_ATTRIBUTE_ONLY_ACTIVE_ARCH[variant=Debug] TRUE)
+set(CMAKE_XCODE_ATTRIBUTE_DEBUG_INFORMATION_FORMAT "dwarf-with-dsym")
+set(CMAKE_XCODE_ATTRIBUTE_GCC_GENERATE_DEBUGGING_SYMBOLS "YES")
 
-# Make sure Xcode generator uses the same output directories
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_DEBUG "${CMAKE_ARCHIVE_OUTPUT_DIRECTORY}")
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE "${CMAKE_ARCHIVE_OUTPUT_DIRECTORY}")
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+function(iplug_add_app PlugName)
+  cmake_policy(SET CMP0076 NEW)
+
+  cmake_parse_arguments(PARSE_ARGV 0 ARG "" "" "SOURCES;RESOURCES")
+
+  set(TargetName ${PlugName}App)
+
+  add_executable(${TargetName} WIN32 MACOSX_BUNDLE ${ARG_SOURCES})
+  target_link_libraries(${TargetName} PUBLIC iGraphics iPlug2_Core)
+  target_link_libraries(${TargetName} PUBLIC rtmidi rtaudio iPlug2_Core iGraphics)
+
+  set(SdkRoot ${CMAKE_CURRENT_FUNCTION_LIST_DIR})
+  set(ResourceDir ${CMAKE_CURRENT_SOURCE_DIR}/resources)
+
+  target_sources(${TargetName} PRIVATE
+    ${SdkRoot}/IPlug/APP/IPlugAPP.cpp
+    ${SdkRoot}/IPlug/APP/IPlugAPP_dialog.cpp
+    ${SdkRoot}/IPlug/APP/IPlugAPP_host.cpp
+    ${SdkRoot}/IPlug/APP/IPlugAPP_main.cpp
+    ${SdkRoot}/IPlug/APP/IPlugAPP_main.mm
+    ${SdkRoot}/IPlug/APP/IPlugAPP.h
+  )
+
+  target_compile_definitions(${TargetName} PUBLIC APP_API)
+  target_include_directories(${TargetName} PUBLIC
+    ${SdkRoot}/IPlug/APP
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/resources
+  )
+
+  target_compile_definitions(${TargetName} PUBLIC IPLUG_DSP=1 IPLUG_EDITOR=1)
+
+  if (APPLE)
+    enable_language(OBJCXX)
+    # Set language for files combining C++ and Objective-C
+    set_source_files_properties(${sdk}/IPlugAPP_main.cpp DIRECTORY "${CMAKE_SOURCE_DIR}" PROPERTIES LANGUAGE "OBJCXX")
+    target_link_libraries(${TargetName} PUBLIC Swell)
+
+    target_link_options(${TargetName} BEFORE PUBLIC -ObjC)
+
+    set(Resources
+      "${ResourceDir}/${PlugName}.icns"
+      "${CMAKE_CURRENT_BINARY_DIR}/${PlugName}-macOS-MainMenu.nib"
+      ${ARG_RESOURCES}
+    )
+
+    find_program( IBTOOL ibtool HINTS "/usr/bin" "${OSX_DEVELOPER_ROOT}/usr/bin" )
+    add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${PlugName}-macOS-MainMenu.nib
+      COMMAND ${IBTOOL} --errors --warnings --notices --output-format human-readable-text
+             --compile
+             ${CMAKE_CURRENT_BINARY_DIR}/${PlugName}-macOS-MainMenu.nib
+             ${ResourceDir}/${PlugName}-macOS-MainMenu.xib
+    )
+
+    set_source_files_properties(${Resources}
+      PROPERTIES MACOSX_PACKAGE_LOCATION "Resources"
+    )
+
+    target_sources(${TargetName} PUBLIC ${Resources})
+    source_group(Resources FILES ${Resources} ${ResourceDir}/${PlugName}-macOS-MainMenu.xib)
+
+    set_target_properties(${TargetName} PROPERTIES
+      MACOSX_BUNDLE TRUE
+      MACOSX_BUNDLE_INFO_PLIST
+        ${ResourceDir}/${PlugName}-macOS-Info.plist
+    )
+  endif()
+endfunction()
+
+function(iplug_add_vst3 PlugName)
+  cmake_policy(SET CMP0076 NEW)
+
+  cmake_parse_arguments(PARSE_ARGV 0 ARG "" "" "SOURCES;RESOURCES")
+
+  set(TargetName ${PlugName}VST3)
+
+  add_library(${TargetName} MODULE ${ARG_SOURCES})
+  target_link_libraries(${TargetName} PUBLIC iGraphics_VST3 iPlug2_Core)
+
+  set(SdkRoot ${CMAKE_CURRENT_FUNCTION_LIST_DIR})
+  set(ResourceDir ${CMAKE_CURRENT_SOURCE_DIR}/resources)
+
+  target_compile_definitions(${TargetName} PUBLIC VST3_API)
+  target_include_directories(${TargetName} PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/resources
+  )
+
+  target_compile_definitions(${TargetName} PUBLIC IPLUG_DSP=1 IPLUG_EDITOR=1)
+
+  if (APPLE)
+    set(Resources
+      "${ResourceDir}/${PlugName}.icns"
+      ${ARG_RESOURCES}
+    )
+
+    set_source_files_properties(${Resources}
+      PROPERTIES MACOSX_PACKAGE_LOCATION "Resources"
+    )
+
+    target_sources(${TargetName} PUBLIC ${Resources})
+    source_group(Resources FILES ${Resources})
+
+    set_target_properties(${TargetName} PROPERTIES
+      BUNDLE TRUE
+      MACOSX_BUNDLE TRUE
+      MACOSX_BUNDLE_INFO_PLIST
+        ${ResourceDir}/${PlugName}-VST3-Info.plist
+      BUNDLE_EXTENSION "vst3"
+      PREFIX ""
+      SUFFIX ""
+    )
+  endif()
+endfunction()
